@@ -5,20 +5,22 @@
  */
 
 import type {
-  CountTokensResponse,
-  GenerateContentResponse,
-  GenerateContentParameters,
   CountTokensParameters,
-  EmbedContentResponse,
+  CountTokensResponse,
   EmbedContentParameters,
+  EmbedContentResponse,
+  GenerateContentParameters,
+  GenerateContentResponse,
 } from '@google/genai';
 import { GoogleGenAI } from '@google/genai';
 import { createCodeAssistContentGenerator } from '../code_assist/codeAssist.js';
 import type { Config } from '../config/config.js';
 
 import type { UserTierId } from '../code_assist/types.js';
-import { LoggingContentGenerator } from './loggingContentGenerator.js';
 import { InstallationManager } from '../utils/installationManager.js';
+import { isCustomApiModel } from './client.js';
+import { CustomApiContentGenerator } from './customApiContentGenerator.js';
+import { LoggingContentGenerator } from './loggingContentGenerator.js';
 
 /**
  * Interface abstracting the core functionalities for generating content and counting tokens.
@@ -139,10 +141,33 @@ export async function createContentGenerator(
     }
     const httpOptions = { headers };
 
+    // Check if we're using a custom API endpoint and need the custom adapter
+    const baseUrl = process.env['GOOGLE_GEMINI_BASE_URL'];
+
+    if (isCustomApiModel() && baseUrl) {
+      // Use CustomApiContentGenerator for custom API endpoints
+      const customGenerator = new CustomApiContentGenerator(
+        baseUrl,
+        config.apiKey || 'EMPTY',
+      );
+      return new LoggingContentGenerator(customGenerator, gcConfig);
+    }
+
+    // For custom API servers, we need to adjust the baseUrl to match their API format
+    // Custom API servers expect /v1/models/... but GoogleGenAI adds /v1beta automatically
+    let adjustedBaseUrl = baseUrl;
+    if (isCustomApiModel() && baseUrl) {
+      // Custom API server needs /v1 path, but GoogleGenAI adds /v1beta
+      // So we set baseUrl to point to the root and let GoogleGenAI add its path
+      // But we need to override the path construction for custom API compatibility
+      adjustedBaseUrl = baseUrl.replace(/\/v1$/, '/v1beta');
+    }
+
     const googleGenAI = new GoogleGenAI({
       apiKey: config.apiKey === '' ? undefined : config.apiKey,
       vertexai: config.vertexai,
       httpOptions,
+      ...(adjustedBaseUrl && { baseUrl: adjustedBaseUrl }),
     });
     return new LoggingContentGenerator(googleGenAI.models, gcConfig);
   }

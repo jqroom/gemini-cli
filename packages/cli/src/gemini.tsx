@@ -4,58 +4,58 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import type { Config } from '@google/gemini-cli-core';
+import {
+  AuthType,
+  getOauthClient,
+  logUserPrompt,
+  sessionId,
+} from '@google/gemini-cli-core';
 import { render } from 'ink';
-import { AppContainer } from './ui/AppContainer.js';
-import { loadCliConfig, parseArguments } from './config/config.js';
-import * as cliConfig from './config/config.js';
-import { readStdin } from './utils/readStdin.js';
+import dns from 'node:dns';
+import os from 'node:os';
 import { basename } from 'node:path';
 import v8 from 'node:v8';
-import os from 'node:os';
-import dns from 'node:dns';
-import { start_sandbox } from './utils/sandbox.js';
+import React from 'react';
+import { validateAuthMethod } from './config/auth.js';
+import * as cliConfig from './config/config.js';
+import { loadCliConfig, parseArguments } from './config/config.js';
+import { loadExtensions } from './config/extension.js';
 import type { DnsResolutionOrder, LoadedSettings } from './config/settings.js';
 import {
   loadSettings,
   migrateDeprecatedSettings,
   SettingScope,
 } from './config/settings.js';
-import { themeManager } from './ui/themes/theme-manager.js';
-import { getStartupWarnings } from './utils/startupWarnings.js';
-import { getUserStartupWarnings } from './utils/userStartupWarnings.js';
-import { ConsolePatcher } from './ui/utils/ConsolePatcher.js';
+import {
+  initializeApp,
+  type InitializationResult,
+} from './core/initializer.js';
 import { runNonInteractive } from './nonInteractiveCli.js';
-import { loadExtensions } from './config/extension.js';
+import { AppContainer } from './ui/AppContainer.js';
+import { setMaxSizedBoxDebugging } from './ui/components/shared/MaxSizedBox.js';
+import { SettingsContext } from './ui/contexts/SettingsContext.js';
+import { themeManager } from './ui/themes/theme-manager.js';
+import { ConsolePatcher } from './ui/utils/ConsolePatcher.js';
+import { detectAndEnableKittyProtocol } from './ui/utils/kittyProtocolDetector.js';
+import { checkForUpdates } from './ui/utils/updateCheck.js';
 import {
   cleanupCheckpoints,
   registerCleanup,
   runExitCleanup,
 } from './utils/cleanup.js';
-import { getCliVersion } from './utils/version.js';
-import type { Config } from '@google/gemini-cli-core';
-import {
-  sessionId,
-  logUserPrompt,
-  AuthType,
-  getOauthClient,
-} from '@google/gemini-cli-core';
-import {
-  initializeApp,
-  type InitializationResult,
-} from './core/initializer.js';
-import { validateAuthMethod } from './config/auth.js';
-import { setMaxSizedBoxDebugging } from './ui/components/shared/MaxSizedBox.js';
-import { validateNonInteractiveAuth } from './validateNonInterActiveAuth.js';
-import { detectAndEnableKittyProtocol } from './ui/utils/kittyProtocolDetector.js';
-import { checkForUpdates } from './ui/utils/updateCheck.js';
+import { AppEvent, appEvents } from './utils/events.js';
 import { handleAutoUpdate } from './utils/handleAutoUpdate.js';
-import { appEvents, AppEvent } from './utils/events.js';
-import { SettingsContext } from './ui/contexts/SettingsContext.js';
+import { readStdin } from './utils/readStdin.js';
+import { start_sandbox } from './utils/sandbox.js';
+import { getStartupWarnings } from './utils/startupWarnings.js';
+import { getUserStartupWarnings } from './utils/userStartupWarnings.js';
+import { getCliVersion } from './utils/version.js';
+import { validateNonInteractiveAuth } from './validateNonInterActiveAuth.js';
 
+import { KeypressProvider } from './ui/contexts/KeypressContext.js';
 import { SessionStatsProvider } from './ui/contexts/SessionContext.js';
 import { VimModeProvider } from './ui/contexts/VimModeContext.js';
-import { KeypressProvider } from './ui/contexts/KeypressContext.js';
 import { useKittyKeyboardProtocol } from './ui/hooks/useKittyKeyboardProtocol.js';
 import {
   relaunchAppInChildProcess,
@@ -110,8 +110,8 @@ function getNodeMemoryArgs(isDebugMode: boolean): string[] {
   return [];
 }
 
-import { runZedIntegration } from './zed-integration/zedIntegration.js';
 import { loadSandboxConfig } from './config/sandboxConfig.js';
+import { runZedIntegration } from './zed-integration/zedIntegration.js';
 
 export function setupUnhandledRejectionHandler() {
   let unhandledRejectionOccurred = false;

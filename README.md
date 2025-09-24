@@ -7,18 +7,43 @@
 
 ![Gemini CLI Screenshot](./docs/assets/gemini-screenshot.png)
 
-Gemini CLI is an open-source AI agent that brings the power of Gemini directly into your terminal. It provides lightweight access to Gemini, giving you the most direct path from your prompt to our model.
+Gemini CLI is a powerful open-source AI agent and terminal-based chatbot that brings Google Gemini, OpenAI-compatible models, and local LLMs directly into your command line. With support for custom API endpoints, local model deployment (vLLM, Ollama, Text Generation WebUI), and seamless integration with self-hosted AI models, it provides developers the most flexible and direct path from prompt to any AI model - whether cloud-based or locally deployed.
 
 ## 🚀 Why Gemini CLI?
 
 - **🎯 Free tier**: 60 requests/min and 1,000 requests/day with personal Google account
 - **🧠 Powerful Gemini 2.5 Pro**: Access to 1M token context window
+- **🏠 Local AI support**: Connect to self-hosted models via OpenAI-compatible APIs (vLLM, Ollama, Text Generation WebUI, Qwen, etc.)
 - **🔧 Built-in tools**: Google Search grounding, file operations, shell commands, web fetching
 - **🔌 Extensible**: MCP (Model Context Protocol) support for custom integrations
+- **🌐 Multi-model**: Seamlessly switch between cloud and local AI models
 - **💻 Terminal-first**: Designed for developers who live in the command line
 - **🛡️ Open source**: Apache 2.0 licensed
 
-## 📦 Installation
+## 🆕 What's New: Universal Local AI Model Support
+
+**🎉 Now supports ANY OpenAI-compatible local AI model!** Connect to your self-hosted LLMs including:
+
+- **Qwen models** (Qwen2.5, Qwen-Coder, etc.)
+- **Llama models** (Llama 3.1, Code Llama, etc.)
+- **Mistral, Phi, DeepSeek** and other popular models
+- **Custom fine-tuned models** deployed locally
+
+**Supported deployment platforms:**
+
+- 🚀 **vLLM** - High-performance inference server
+- 🦙 **Ollama** - Easy local model management
+- 🌐 **Text Generation WebUI** - User-friendly interface
+- 🔧 **Any OpenAI-compatible API** endpoint
+
+**Key benefits:**
+
+- 🔒 **Privacy-first**: Keep your data local and secure
+- 💰 **Cost-effective**: No API costs for local inference
+- ⚡ **Low latency**: Direct local network access
+- 🎛️ **Full control**: Customize model parameters and behavior
+
+## � Installation
 
 ### Quick Install
 
@@ -164,6 +189,43 @@ export GOOGLE_API_KEY="YOUR_API_KEY"
 export GOOGLE_GENAI_USE_VERTEXAI=true
 gemini
 ```
+
+### Option 4: Custom OpenAI-Compatible API (Local Deployment)
+
+**✨ Best for:** Developers using locally deployed models or custom OpenAI-compatible APIs
+
+**Benefits:**
+
+- **Universal Compatibility**: Support for any OpenAI-compatible API endpoint
+- **Local Model Support**: Works with locally deployed models (Qwen, LLaMA, Mistral, etc.)
+- **Custom Endpoints**: Use any self-hosted or third-party OpenAI-compatible service
+- **Flexible Authentication**: Simple API key or token-based authentication
+
+```bash
+# Configure for local deployment
+export GEMINI_API_KEY="your-actual-api-key"  # your actual API key
+export GOOGLE_GEMINI_BASE_URL="http://localhost:8000/v1"  # your local endpoint
+gemini -m your-model-name
+
+# Example configurations:
+# For Qwen models
+export GOOGLE_GEMINI_BASE_URL="http://localhost:8000/v1"
+gemini -m qwen25-32b-native
+
+# For local LLaMA deployment
+export GOOGLE_GEMINI_BASE_URL="http://localhost:1234/v1"
+gemini -m llama-3-8b-instruct
+
+# For Ollama
+export GOOGLE_GEMINI_BASE_URL="http://localhost:11434/v1"
+gemini -m llama3:8b
+```
+
+**Supported Model Types:**
+
+- **Qwen Models**: `qwen25-32b-native`, `qwen-*` (detected automatically by name)
+- **Other Models**: Any model accessible through OpenAI-compatible API
+- **Local Deployments**: vLLM, Ollama, Text Generation WebUI, LM Studio, etc.
 
 For Google Workspace accounts and other authentication methods, see the [authentication guide](./docs/cli/authentication.md).
 

@@ -5,30 +5,13 @@
  */
 
 import type {
-  GenerateContentConfig,
-  PartListUnion,
   Content,
-  Tool,
+  GenerateContentConfig,
   GenerateContentResponse,
+  PartListUnion,
+  Tool,
 } from '@google/genai';
-import {
-  getDirectoryContextString,
-  getEnvironmentContext,
-} from '../utils/environmentContext.js';
-import type { ServerGeminiStreamEvent, ChatCompressionInfo } from './turn.js';
-import { CompressionStatus } from './turn.js';
-import { Turn, GeminiEventType } from './turn.js';
 import type { Config } from '../config/config.js';
-import { getCoreSystemPrompt, getCompressionPrompt } from './prompts.js';
-import { getResponseText } from '../utils/partUtils.js';
-import { checkNextSpeaker } from '../utils/nextSpeakerChecker.js';
-import { reportError } from '../utils/errorReporting.js';
-import { GeminiChat } from './geminiChat.js';
-import { retryWithBackoff } from '../utils/retry.js';
-import { getErrorMessage } from '../utils/errors.js';
-import { tokenLimit } from './tokenLimits.js';
-import type { ChatRecordingService } from '../services/chatRecordingService.js';
-import type { ContentGenerator } from './contentGenerator.js';
 import {
   DEFAULT_GEMINI_FLASH_MODEL,
   DEFAULT_GEMINI_MODEL,
@@ -36,8 +19,12 @@ import {
   DEFAULT_THINKING_MODE,
   getEffectiveModel,
 } from '../config/models.js';
-import { LoopDetectionService } from '../services/loopDetectionService.js';
+import { handleFallback } from '../fallback/handler.js';
 import { ideContextStore } from '../ide/ideContext.js';
+import type { File, IdeContext } from '../ide/types.js';
+import type { RoutingContext } from '../routing/routingStrategy.js';
+import type { ChatRecordingService } from '../services/chatRecordingService.js';
+import { LoopDetectionService } from '../services/loopDetectionService.js';
 import {
   logChatCompression,
   logNextSpeakerCheck,
@@ -46,13 +33,35 @@ import {
   makeChatCompressionEvent,
   NextSpeakerCheckEvent,
 } from '../telemetry/types.js';
-import type { IdeContext, File } from '../ide/types.js';
-import { handleFallback } from '../fallback/handler.js';
-import type { RoutingContext } from '../routing/routingStrategy.js';
 import { uiTelemetryService } from '../telemetry/uiTelemetry.js';
+import {
+  getDirectoryContextString,
+  getEnvironmentContext,
+} from '../utils/environmentContext.js';
+import { reportError } from '../utils/errorReporting.js';
+import { getErrorMessage } from '../utils/errors.js';
+import { checkNextSpeaker } from '../utils/nextSpeakerChecker.js';
+import { getResponseText } from '../utils/partUtils.js';
+import { retryWithBackoff } from '../utils/retry.js';
+import type { ContentGenerator } from './contentGenerator.js';
+import { GeminiChat } from './geminiChat.js';
+import { getCompressionPrompt, getCoreSystemPrompt } from './prompts.js';
+import { tokenLimit } from './tokenLimits.js';
+import type { ChatCompressionInfo, ServerGeminiStreamEvent } from './turn.js';
+import { CompressionStatus, GeminiEventType, Turn } from './turn.js';
 
 export function isThinkingSupported(model: string) {
   return model.startsWith('gemini-2.5') || model === DEFAULT_GEMINI_MODEL_AUTO;
+}
+
+/**
+ * Checks if we're using a custom API endpoint (like local deployment)
+ * that requires OpenAI-compatible adapter instead of native Gemini API
+ */
+export function isCustomApiModel(): boolean {
+  // If a custom base URL is set, we're using a custom API endpoint
+  const baseUrl = process.env['GOOGLE_GEMINI_BASE_URL'];
+  return !!baseUrl;
 }
 
 export function isThinkingDefault(model: string) {
@@ -679,20 +688,32 @@ export class GeminiClient {
       };
     }
 
-    const { totalTokens: originalTokenCount } =
-      await this.getContentGeneratorOrFail().countTokens({
-        model,
-        contents: curatedHistory,
-      });
-    if (originalTokenCount === undefined) {
-      console.warn(`Could not determine token count for model ${model}.`);
-      this.hasFailedCompressionAttempt = !force && true;
-      return {
-        originalTokenCount: 0,
-        newTokenCount: 0,
-        compressionStatus:
-          CompressionStatus.COMPRESSION_FAILED_TOKEN_COUNT_ERROR,
-      };
+    // For custom API models, skip token counting as they may not support countTokens API
+    let originalTokenCount: number;
+    if (isCustomApiModel()) {
+      // Estimate token count for custom API models (rough approximation: 1 token ≈ 4 characters)
+      const historyText = JSON.stringify(curatedHistory);
+      originalTokenCount = Math.ceil(historyText.length / 4);
+      console.warn(
+        `Using estimated token count for custom API model ${model}: ${originalTokenCount}`,
+      );
+    } else {
+      const { totalTokens } =
+        await this.getContentGeneratorOrFail().countTokens({
+          model,
+          contents: curatedHistory,
+        });
+      if (totalTokens === undefined) {
+        console.warn(`Could not determine token count for model ${model}.`);
+        this.hasFailedCompressionAttempt = !force && true;
+        return {
+          originalTokenCount: 0,
+          newTokenCount: 0,
+          compressionStatus:
+            CompressionStatus.COMPRESSION_FAILED_TOKEN_COUNT_ERROR,
+        };
+      }
+      originalTokenCount = totalTokens;
     }
 
     const contextPercentageThreshold =
@@ -756,20 +777,32 @@ export class GeminiClient {
     ]);
     this.forceFullIdeContext = true;
 
-    const { totalTokens: newTokenCount } =
-      await this.getContentGeneratorOrFail().countTokens({
-        model,
-        contents: chat.getHistory(),
-      });
-    if (newTokenCount === undefined) {
-      console.warn('Could not determine compressed history token count.');
-      this.hasFailedCompressionAttempt = !force && true;
-      return {
-        originalTokenCount,
-        newTokenCount: originalTokenCount,
-        compressionStatus:
-          CompressionStatus.COMPRESSION_FAILED_TOKEN_COUNT_ERROR,
-      };
+    // For custom API models, skip token counting as they may not support countTokens API
+    let newTokenCount: number;
+    if (isCustomApiModel()) {
+      // Estimate token count for custom API models (rough approximation: 1 token ≈ 4 characters)
+      const compressedHistoryText = JSON.stringify(chat.getHistory());
+      newTokenCount = Math.ceil(compressedHistoryText.length / 4);
+      console.warn(
+        `Using estimated compressed token count for custom API model ${model}: ${newTokenCount}`,
+      );
+    } else {
+      const { totalTokens } =
+        await this.getContentGeneratorOrFail().countTokens({
+          model,
+          contents: chat.getHistory(),
+        });
+      if (totalTokens === undefined) {
+        console.warn('Could not determine compressed history token count.');
+        this.hasFailedCompressionAttempt = !force && true;
+        return {
+          originalTokenCount,
+          newTokenCount: originalTokenCount,
+          compressionStatus:
+            CompressionStatus.COMPRESSION_FAILED_TOKEN_COUNT_ERROR,
+        };
+      }
+      newTokenCount = totalTokens;
     }
 
     uiTelemetryService.setLastPromptTokenCount(newTokenCount);
