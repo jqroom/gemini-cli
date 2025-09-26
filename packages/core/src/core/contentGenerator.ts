@@ -19,7 +19,10 @@ import type { Config } from '../config/config.js';
 import type { UserTierId } from '../code_assist/types.js';
 import { InstallationManager } from '../utils/installationManager.js';
 import { isCustomApiModel } from './client.js';
-import { CustomApiContentGenerator } from './customApiContentGenerator.js';
+import {
+  ApiFormat,
+  CustomApiContentGenerator,
+} from './customApiContentGenerator.js';
 import { LoggingContentGenerator } from './loggingContentGenerator.js';
 
 /**
@@ -146,9 +149,28 @@ export async function createContentGenerator(
 
     if (isCustomApiModel() && baseUrl) {
       // Use CustomApiContentGenerator for custom API endpoints
+      // Determine API format from environment variable or default to QWEN
+      let selectedFormat = ApiFormat.QWEN; // Default to QWEN for backward compatibility
+      const apiFormatEnv = process.env['CUSTOM_API_FORMAT'];
+      if (apiFormatEnv) {
+        switch (apiFormatEnv.toUpperCase()) {
+          case 'OPENAI':
+            selectedFormat = ApiFormat.OPENAI;
+            break;
+          case 'ANTHROPIC':
+            selectedFormat = ApiFormat.ANTHROPIC;
+            break;
+          case 'QWEN':
+          default:
+            selectedFormat = ApiFormat.QWEN;
+            break;
+        }
+      }
+
       const customGenerator = new CustomApiContentGenerator(
         baseUrl,
         config.apiKey || 'EMPTY',
+        selectedFormat,
       );
       return new LoggingContentGenerator(customGenerator, gcConfig);
     }
